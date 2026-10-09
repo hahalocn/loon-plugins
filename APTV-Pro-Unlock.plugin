@@ -1,0 +1,8 @@
+#!name=APTV Pro 解锁（RevenueCat 响应注入）
+#!desc=通过 MITM 改写 RevenueCat 订阅者响应，使 APTV 判定为已购买 Pro 买断。仅用于自有设备的兼容性研究。
+
+[Script]
+http-response ^https?:\/\/(api\.revenuecat\.com|a\.revenue\.cat|api\.rc-backup\.com|api-production\.8-lives-cat\.io)\/v1\/(subscribers|receipts) script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/aptv_pro.js,requires-body=true,binary-body-mode=false,timeout=10,tag=APTV-Pro,enable=true
+
+[MitM]
+hostname = api.revenuecat.com, a.revenue.cat, api.rc-backup.com, api-production.8-lives-cat.io
