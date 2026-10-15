@@ -45,6 +45,13 @@ const REDIRECT = {
   vipCompetitiveUrlForWxMini: "competitiveResultUrlForWxMini",
 };
 
+// 权益有效期：在原值基础上加一年（动态算出，不写死年份）
+function addOneYear(s) {
+  const m = String(s).match(/^(\d{4})([-\/])(\d{1,2})\2(\d{1,2})(.*)$/);
+  if (!m) return s;
+  return (parseInt(m[1], 10) + 1) + m[2] + m[3] + m[2] + m[4] + (m[5] || "");
+}
+
 const changed = [];
 
 function isObj(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
@@ -59,6 +66,12 @@ function walk(node) {
   }
   // ★ 核心：rightType "2" = 免费权益，前端 isFree = ("2" == rightType)
   if (node.rightType === "2") { node.rightType = "1"; changed.push("rightType"); }
+  // 权益有效期：值是服务端返回的真实日期，但服务端不做权益校验，
+  // 改它是为了防止前端按"已过期"把内容挡掉。每次都基于原值 +1 年，不会累积。
+  if (typeof node.expireTime === "string" && node.expireTime) {
+    const nv = addOneYear(node.expireTime);
+    if (nv !== node.expireTime) { node.expireTime = nv; changed.push("expireTime"); }
+  }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
   // 分数为空时用超越比例补上
