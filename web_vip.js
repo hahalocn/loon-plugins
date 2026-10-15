@@ -8,7 +8,7 @@
  * 关闭回传：把 DEBUG 改成 false。不影响任何改写功能。
  */
 
-const DEBUG = true;
+const DEBUG = false;
 const REPORT_URL = "http://192.168.31.49:11510/api/gkld/_report";
 
 const url = $request.url;
