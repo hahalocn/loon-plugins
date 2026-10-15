@@ -3,16 +3,6 @@
 #!date=1.0
 #!type=normal
 
-[Rule]
-# 让 Loon 访问本机服务时直连（本目录的 /api/gkld 路由仍可用，留着备用）
-DOMAIN,192.168.31.49,DIRECT
-DOMAIN-SUFFIX,local,DIRECT
-IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
-IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
-IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
-IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
-IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
-
 [Script]
 # 全量 API：两个 API 域名的所有请求都过脚本，命中权益字段就改写
 http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=4,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-api,enable=true
