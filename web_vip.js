@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.0
+ * Web VIP 解锁 · Loon http-response 脚本  v1.1
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -12,7 +12,7 @@ const url = $request.url;
 let body = $response.body;
 
 // 只碰带权益字段的接口；其余请求不解析、不改写，原样放行
-const TARGET = /\/open\/vip|user-rights|my-page|competitiv|interested|resume-refresh/i;
+const TARGET = /\/open\/vip|user-rights|my-page|competitiv|interested|resume-refresh|jbsvip|compete/i;
 
 // 字段 → 目标值。增删解锁项只改这里，不用动逻辑。
 const RULES = {
@@ -33,13 +33,31 @@ const RULES = {
   isExpire: "0",
 };
 
-// 跳转改写：把「去买 VIP」的地址换成报告页
+// 跳转改写：把「去买 VIP / 分析页」的地址换成完整报告页
+// 注意要递归整棵树 —— 职位详情页的入口字段藏在 resultbody.competitionInfo 里，
+// 只看 resultbody 顶层会漏掉，点进去就是「免费升级」购买页。
 const REDIRECT = {
   competitiveAnalysisUrl: "competitiveResultUrl",
   vipCompetitiveUrlForApp: "competitiveResultUrl",
   competitiveAnalysisUrlForWxMini: "competitiveResultUrlForWxMini",
   vipCompetitiveUrlForWxMini: "competitiveResultUrlForWxMini",
 };
+
+function fixRedirects(node) {
+  if (!isObj(node)) return;
+  for (const k in REDIRECT) {
+    const to = REDIRECT[k];
+    if (typeof node[k] === "string" && typeof node[to] === "string" && node[to] && node[k] !== node[to]) {
+      node[k] = node[to];
+      changed.push(k);
+    }
+  }
+  for (const k of Object.keys(node)) {
+    const v = node[k];
+    if (isObj(v)) fixRedirects(v);
+    else if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) fixRedirects(v[i]); }
+  }
+}
 
 // 权益有效期：在原值基础上加一年（动态算出，不写死年份）
 function addOneYear(s) {
@@ -82,16 +100,7 @@ try {
     const obj = JSON.parse(body);
     if (isObj(obj)) {
       walk(obj);
-      const rb = obj.resultbody;
-      if (isObj(rb)) {
-        for (const k in REDIRECT) {
-          const to = REDIRECT[k];
-          if (typeof rb[k] === "string" && typeof rb[to] === "string" && rb[to]) {
-            rb[k] = rb[to];
-            changed.push(k);
-          }
-        }
-      }
+      fixRedirects(obj);
       if (changed.length) body = JSON.stringify(obj);
     }
   }
