@@ -1,9 +1,10 @@
 #!name=Web VIP 解锁
 #!desc=通过 MITM 改写客户端权益字段，使 App 判定为已开通会员。仅用于自有设备的兼容性研究。
-#!version=1.0
+#!date=1.0
+#!type=normal
 
 [Rule]
-# 让 Loon 访问本机服务时直连（本机托管备用版用得上）
+# 让 Loon 访问本机服务时直连（本目录的 /api/gkld 路由仍可用，留着备用）
 DOMAIN,192.168.31.49,DIRECT
 DOMAIN-SUFFIX,local,DIRECT
 IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
