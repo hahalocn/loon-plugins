@@ -70,8 +70,11 @@ function walk(node) {
   }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
-  // 分数为空时用超越比例补上
-  if (node.score === "" && node.competitorsSurpass !== undefined) node.score = String(node.competitorsSurpass);
+  // 分数为空时用超越比例补上（必须登记，否则改动会被丢弃）
+  if (node.score === "" && node.competitorsSurpass !== undefined) {
+    node.score = String(node.competitorsSurpass);
+    changed.push("score");
+  }
 }
 
 try {
