@@ -1,9 +1,16 @@
 #!name=Web VIP 解锁
 #!desc=通过 MITM 改写客户端权益字段，使 App 判定为已开通会员。仅用于自有设备的兼容性研究。
-#!date=1.0
+#!date=1.1
 
 [Script]
-http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=5,requires-body=true
+# ① App 端 API（cupid / vapi）
+http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=6,requires-body=true
+
+# ② 报告页 / 分析页（we.51job.com 的 webview 及其内部接口）
+http-response ^https?://(we|static)\.51job\.com/jbsvip/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=6,requires-body=true
+
+# ③ 旧版竞争分析页（m.51job.com 的 webview）
+http-response ^https?://m\.51job\.com/my/compete script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=6,requires-body=true
 
 [MitM]
-hostname = %APPEND% cupid.51job.com, cupid.51jobapp.com, vapi.51job.com
+hostname = %APPEND% cupid.51job.com, cupid.51jobapp.com, vapi.51job.com, we.51job.com, static.51job.com, m.51job.com
