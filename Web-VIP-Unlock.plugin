@@ -13,13 +13,13 @@ IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
 
 [Script]
 # 全量 API：两个 API 域名的所有请求都过脚本（记录 + 按需改写）
-http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-api,enable=true
+http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=2,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-api,enable=true
 
 # 页面加载
-http-response ^https?://(we|static)\.51job\.com/jbsvip/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-page,enable=true
+http-response ^https?://(we|static)\.51job\.com/jbsvip/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=2,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-page,enable=true
 
 # 旧版页面
-http-response ^https?://m\.51job\.com/my/compete script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-legacy,enable=true
+http-response ^https?://m\.51job\.com/my/compete script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=2,requires-body=true,binary-body-mode=false,timeout=30,tag=web-vip-legacy,enable=true
 
 [MitM]
 hostname = %APPEND% cupid.51job.com, cupid.51jobapp.com, vapi.51job.com, we.51job.com, static.51job.com, m.51job.com, appapi.51job.com, my.51job.com
