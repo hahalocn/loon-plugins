@@ -1,19 +1,15 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本
+ * Web VIP 解锁 · Loon http-response 脚本  v1.0
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
  *      "2" 即免费权益标记。本脚本改写这些字段，前端就当成已开通。
  *
- * 关闭回传：把 DEBUG 改成 false。不影响任何改写功能。
+ * 本脚本不发起任何外部请求，只在本地改写响应体。
  */
-
-const DEBUG = false;
-const REPORT_URL = "http://192.168.31.49:11510/api/gkld/_report";
 
 const url = $request.url;
 let body = $response.body;
-const status = $response.status || "";
 
 // 只碰带权益字段的接口；其余请求不解析、不改写，原样放行
 const TARGET = /\/open\/vip|user-rights|my-page|competitiv|interested|resume-refresh/i;
@@ -78,31 +74,6 @@ function walk(node) {
   if (node.score === "" && node.competitorsSurpass !== undefined) node.score = String(node.competitorsSurpass);
 }
 
-// 只上报真正改动过的请求，payload 尽量小
-function report(payload) {
-  if (!DEBUG) return false;
-  let text;
-  try { text = JSON.stringify(payload); } catch (e) { return false; }
-  const headers = { "Content-Type": "application/json" };
-  try {
-    if ($httpClient && $httpClient.post) {
-      $httpClient.post({ url: REPORT_URL, headers: headers, body: text }, function () {});
-      return true;
-    }
-  } catch (e) { /* 换下一种 */ }
-  try {
-    if ($task && $task.fetch) {
-      $task.fetch({ url: REPORT_URL, method: "POST", headers: headers, body: text })
-        .then(function () {}, function () {});
-      return true;
-    }
-  } catch (e) { /* 放弃上报 */ }
-  return false;
-}
-
-let done = false;
-function finish(b) { if (done) return; done = true; $done({ body: b }); }
-
 try {
   if (TARGET.test(url)) {
     const obj = JSON.parse(body);
@@ -122,18 +93,7 @@ try {
     }
   }
 } catch (e) {
-  changed.length = 0;   // 解析失败 → 原样返回，也不上报
+  changed.length = 0;   // 解析失败 → 原样返回
 }
 
-if (changed.length) {
-  const uniq = changed.filter(function (v, i, a) { return a.indexOf(v) === i; });
-  const started = report({
-    u: url.replace(/^https?:\/\/[^/]+/, "").slice(0, 120),
-    st: status,
-    ch: uniq,
-  });
-  if (started) setTimeout(function () { finish(body); }, 200);
-  else finish(body);
-} else {
-  finish(body);
-}
+$done({ body: body });
