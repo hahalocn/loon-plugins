@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.8
+ * Web VIP 解锁 · Loon http-response 脚本  v1.9
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -35,37 +35,23 @@ const RULES = {
   // 阈值归零：让服务端已经返回的匹配分不再被判定为不可展示
   configThresholdMatchScore: 0, configTextMatchScore: 0,
   isExpire: "0",
-  // 配额字段（/open/my-page/v2/present）：服务端返回 competitivenessTotalNum=0，
-  // 卡片疑似按"总次数为 0"决定把匹配度/超越比例/投递人数遮住
+  // 配额字段（/open/my-page/v2/present）：服务端返回 competitivenessTotalNum=0
   competitivenessTotalNum: 999, interestedTotalNum: 999, refreshResumeTotalNum: 999,
   competitivenessUsedNum: 0, interestedUsedNum: 0, refreshResumeUsedNum: 0,
 };
 
-// 跳转改写：把「去买 VIP / 分析页」的地址换成完整报告页
-// 注意要递归整棵树 —— 职位详情页的入口字段藏在 resultbody.competitionInfo 里，
-// 只看 resultbody 顶层会漏掉，点进去就是「免费升级」购买页。
+// 跳转改写：把「去买 VIP」的地址换成完整报告页。
+// ★ 只作用于 resultbody 顶层，不要递归。
+// 踩过的坑：曾经改成递归整棵树，结果把 resultbody.competitionInfo.competitiveAnalysisUrl
+// 也从 competitiveanalysis（分析页）改成了 competitivereport（报告页）——
+// 职位详情卡片点击的目标被改掉，原本「点卡片看数字、点按钮看报告」的两步交互变成一步。
+// 这里保持只改顶层，与最初可用的版本一致。
 const REDIRECT = {
   competitiveAnalysisUrl: "competitiveResultUrl",
   vipCompetitiveUrlForApp: "competitiveResultUrl",
   competitiveAnalysisUrlForWxMini: "competitiveResultUrlForWxMini",
   vipCompetitiveUrlForWxMini: "competitiveResultUrlForWxMini",
 };
-
-function fixRedirects(node) {
-  if (!isObj(node)) return;
-  for (const k in REDIRECT) {
-    const to = REDIRECT[k];
-    if (typeof node[k] === "string" && typeof node[to] === "string" && node[to] && node[k] !== node[to]) {
-      node[k] = node[to];
-      changed.push(k);
-    }
-  }
-  for (const k of Object.keys(node)) {
-    const v = node[k];
-    if (isObj(v)) fixRedirects(v);
-    else if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) fixRedirects(v[i]); }
-  }
-}
 
 // 权益有效期：在原值基础上加一年（动态算出，不写死年份）
 function addOneYear(s) {
@@ -161,7 +147,7 @@ function walk(node) {
   }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
-  // 记录真实分数，供后续请求（sesame-competitive 的 competitionInfo）补占位符用
+  // 记录真实分数，供后续请求补字段用
   if (node.competitorsSurpass !== undefined && node.competitorsSurpass !== null) {
     cachedScore = String(node.competitorsSurpass);
     psWrite(PS_KEY_SCORE, cachedScore);
@@ -205,7 +191,17 @@ try {
     const obj = JSON.parse(body);
     if (isObj(obj)) {
       walk(obj);
-      fixRedirects(obj);
+      // 跳转改写：只改 resultbody 顶层（与最初可用版本一致，见上面 REDIRECT 的注释）
+      const rbTop = obj.resultbody;
+      if (isObj(rbTop)) {
+        for (const k in REDIRECT) {
+          const to = REDIRECT[k];
+          if (typeof rbTop[k] === "string" && typeof rbTop[to] === "string" && rbTop[to] && rbTop[k] !== rbTop[to]) {
+            rbTop[k] = rbTop[to];
+            changed.push(k);
+          }
+        }
+      }
       // sesame-competitive 的 competitionInfo.status 一直是 "3"。
       // 报告页前端里 showStatus=3 对应的是"已过期"（isExpire==="1" 时就是 3），
       // 职位详情页的竞争力卡片疑似沿用同一套语义 → 卡片变成不可用态。
@@ -233,7 +229,7 @@ try {
         }
       }
       // /open/vip/competitiveness 自带 matchScore —— 同响应直接补 jobMatchScore /
-      // jobMatchScoreShow，不依赖跨请求缓存。卡片的匹配度/投递人数疑似读这两个名字。
+      // jobMatchScoreShow，不依赖跨请求缓存。报告页代码里「匹配度」就是 jobMatchScore。
       if (/\/open\/vip\/competitiveness/.test(url)) {
         const rb = obj.resultbody;
         if (isObj(rb) && typeof rb.matchScore === "number") {
