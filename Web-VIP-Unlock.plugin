@@ -1,18 +1,18 @@
 #!name=Web VIP 解锁
 #!desc=通过 MITM 改写客户端权益字段，使 App 判定为已开通会员。仅用于自有设备的兼容性研究。
-#!date=1.5
+#!date=1.6
 
 [Script]
 # ① App 端原生 API（cupid / vapi）
-http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=10,requires-body=true
+http-response ^https?://(cupid|vapi)\.51job(app)?\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=11,requires-body=true
 
 # ② webview 页面及其内部接口：整域覆盖，不限 /jbsvip/
 #    报告页是 we.51job.com 上的 webview，它自己的数据接口路径未知，
 #    限定 /jbsvip/ 会漏掉；整域覆盖最稳（非 JSON 响应脚本会原样放行）
-http-response ^https?://(we|static)\.51job\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=10,requires-body=true
+http-response ^https?://(we|static)\.51job\.com/ script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=11,requires-body=true
 
 # ③ 旧版竞争分析页（m.51job.com 的 webview）
-http-response ^https?://m\.51job\.com/my/compete script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=10,requires-body=true
+http-response ^https?://m\.51job\.com/my/compete script-path=https://raw.githubusercontent.com/hahalocn/loon-plugins/main/web_vip.js?v=11,requires-body=true
 
 [MitM]
 hostname = %APPEND% cupid.51job.com, cupid.51jobapp.com, vapi.51job.com, we.51job.com, static.51job.com, m.51job.com, appapi.51job.com
