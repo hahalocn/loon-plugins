@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.7
+ * Web VIP 解锁 · Loon http-response 脚本  v1.8
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -35,6 +35,10 @@ const RULES = {
   // 阈值归零：让服务端已经返回的匹配分不再被判定为不可展示
   configThresholdMatchScore: 0, configTextMatchScore: 0,
   isExpire: "0",
+  // 配额字段（/open/my-page/v2/present）：服务端返回 competitivenessTotalNum=0，
+  // 卡片疑似按"总次数为 0"决定把匹配度/超越比例/投递人数遮住
+  competitivenessTotalNum: 999, interestedTotalNum: 999, refreshResumeTotalNum: 999,
+  competitivenessUsedNum: 0, interestedUsedNum: 0, refreshResumeUsedNum: 0,
 };
 
 // 跳转改写：把「去买 VIP / 分析页」的地址换成完整报告页
@@ -71,9 +75,9 @@ function addOneYear(s) {
 }
 
 // 跨请求缓存真实分数。
-// 真实分数在 /open/vip/competitiveness 里（competitorsSurpass / matchScore），
-// 但职位详情卡片的「匹配度」读的是 user-rights.jobMatchScore ——
-// 两个值相等，所以缓存下来互相补。
+// 职位详情页的竞争力卡片文本是模板：「你超过[#vague#]的竞争者，竞争力表现[#vague#]」，
+// 两个占位符分别对应 competitionInfo.score 和 .scale —— 但服务端把这两个都返回空串。
+// 真实分数在 /open/vip/competitiveness 里（competitorsSurpass / matchScore），缓存下来互相补。
 let cachedScore = "";
 let cachedMatchScore = null;
 
@@ -81,10 +85,6 @@ let cachedMatchScore = null;
 // 所以跨请求传值必须落盘。
 const PS_KEY_SCORE = "webvip_competitorsSurpass";
 const PS_KEY_MATCH = "webvip_matchScore";
-
-// 诊断用兜底值：缓存取不到时先补这个，用来判断"字段是否找对"。
-// 一旦确认生效，会改成只用真实值（见文末 TODO）。
-const FALLBACK_MATCH_SCORE = 88;
 
 function psRead(key) {
   try {
@@ -161,7 +161,7 @@ function walk(node) {
   }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
-  // 记录真实分数，供后续请求补字段用
+  // 记录真实分数，供后续请求（sesame-competitive 的 competitionInfo）补占位符用
   if (node.competitorsSurpass !== undefined && node.competitorsSurpass !== null) {
     cachedScore = String(node.competitorsSurpass);
     psWrite(PS_KEY_SCORE, cachedScore);
@@ -215,10 +215,8 @@ try {
         ci.status = "1";
         changed.push("competitionInfo.status");
       }
-      // ★ 关键修复：user-rights 补 jobMatchScore / jobMatchScoreShow。
-      // 对照装插件前后的抓包：这两个字段在 174 里 8 条中 7 条都有（值 71/70/78…），
-      // 与 /open/vip/competitiveness 的 matchScore 完全对应；装插件后彻底消失。
-      // 职位详情卡片的「匹配度」读的就是它 —— 缺了就显示 0 分，并连带把「投递人数」打码。
+      // user-rights 补 jobMatchScore / jobMatchScoreShow（只用真实值，不编造）。
+      // 这两个字段在装插件前 8 条里 7 条都有（值 71/70/78…），与 matchScore 完全对应。
       if (/job-detail\/user-rights/.test(url)) {
         const rb = obj.resultbody;
         if (isObj(rb) && rb.jobMatchScore === undefined) {
@@ -227,11 +225,26 @@ try {
             const t = psRead(PS_KEY_MATCH);
             if (t) ms = parseInt(t, 10);
           }
-          // TODO: 诊断用兜底。确认字段生效后，改成 `if (ms === null) return;` 只用真实值。
-          if (ms === null || isNaN(ms)) ms = FALLBACK_MATCH_SCORE;
-          rb.jobMatchScore = ms;
-          rb.jobMatchScoreShow = ms;
-          changed.push("jobMatchScore");
+          if (ms !== null && !isNaN(ms)) {
+            rb.jobMatchScore = ms;
+            rb.jobMatchScoreShow = ms;
+            changed.push("jobMatchScore");
+          }
+        }
+      }
+      // /open/vip/competitiveness 自带 matchScore —— 同响应直接补 jobMatchScore /
+      // jobMatchScoreShow，不依赖跨请求缓存。卡片的匹配度/投递人数疑似读这两个名字。
+      if (/\/open\/vip\/competitiveness/.test(url)) {
+        const rb = obj.resultbody;
+        if (isObj(rb) && typeof rb.matchScore === "number") {
+          if (rb.jobMatchScore === undefined) {
+            rb.jobMatchScore = rb.matchScore;
+            changed.push("jobMatchScore");
+          }
+          if (rb.jobMatchScoreShow === undefined) {
+            rb.jobMatchScoreShow = rb.matchScore;
+            changed.push("jobMatchScoreShow");
+          }
         }
       }
       if (changed.length) body = JSON.stringify(obj);
