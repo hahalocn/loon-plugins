@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.1
+ * Web VIP 解锁 · Loon http-response 脚本  v1.3
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -11,8 +11,12 @@
 const url = $request.url;
 let body = $response.body;
 
-// 只碰带权益字段的接口；其余请求不解析、不改写，原样放行
-const TARGET = /\/open\/vip|user-rights|my-page|competitiv|interested|resume-refresh|jbsvip|compete/i;
+// 覆盖整个 /open/ API 前缀。
+// 教训：之前用关键词白名单（/open/vip|competitiv|...），结果 82 个接口里 64 个漏掉，
+// 包括 /open/equity/*（权益）、/open/noauth/jobs/job-detail/{id}（竞争力分数）——
+// 每漏一个就坏一个功能。RULES 只认具体字段名，非 JSON 会解析失败后原样放行，
+// 所以放宽匹配范围没有副作用，只有覆盖率提升。
+const TARGET = /\/open\/|jbsvip|compete/i;
 
 // 字段 → 目标值。增删解锁项只改这里，不用动逻辑。
 const RULES = {
@@ -66,6 +70,14 @@ function addOneYear(s) {
   return (parseInt(m[1], 10) + 1) + m[2] + m[3] + m[2] + m[4] + (m[5] || "");
 }
 
+// 当前日期 +1 年，格式 YYYY-MM-DD HH:mm:ss
+function nowPlusOneYear() {
+  const d = new Date();
+  const p = (n) => (n < 10 ? "0" : "") + n;
+  return (d.getFullYear() + 1) + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) +
+    " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+}
+
 const changed = [];
 
 function isObj(v) { return v !== null && typeof v === "object" && !Array.isArray(v); }
@@ -85,6 +97,14 @@ function walk(node) {
   if (typeof node.expireTime === "string" && node.expireTime) {
     const nv = addOneYear(node.expireTime);
     if (nv !== node.expireTime) { node.expireTime = nv; changed.push("expireTime"); }
+  }
+  // /open/vip/charge（serviceIdList=100009,100002）服务端不下发 expireTime，
+  // 而报告页代码是：this.expireTime = e ? `有效期至${e}` : ""  → 空则整行不渲染。
+  // 所以这里补一个。判断依据：带次数三元组但没有 expireTime 的权益对象。
+  if (node.expireTime === undefined &&
+      node.viewedCount !== undefined && node.maxViewedCount !== undefined) {
+    node.expireTime = nowPlusOneYear();
+    changed.push("expireTime");
   }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
