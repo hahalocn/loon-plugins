@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.6
+ * Web VIP 解锁 · Loon http-response 脚本  v1.7
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -78,14 +78,23 @@ let cachedScore = "";
 let cachedMatchScore = null;
 
 // Loon 每次执行脚本都是全新的 JS 上下文，模块变量不跨请求保留，
-// 所以跨请求传值必须落盘到 $persistentStore。
+// 所以跨请求传值必须落盘。
 const PS_KEY_SCORE = "webvip_competitorsSurpass";
 const PS_KEY_MATCH = "webvip_matchScore";
+
+// 诊断用兜底值：缓存取不到时先补这个，用来判断"字段是否找对"。
+// 一旦确认生效，会改成只用真实值（见文末 TODO）。
+const FALLBACK_MATCH_SCORE = 88;
 
 function psRead(key) {
   try {
     if (typeof $persistentStore !== "undefined" && $persistentStore.read) {
       return $persistentStore.read(key) || "";
+    }
+  } catch (e) { /* 换下一种 API */ }
+  try {
+    if (typeof $prefs !== "undefined" && $prefs.valueForKey) {
+      return $prefs.valueForKey(key) || "";
     }
   } catch (e) { /* 环境不支持则退化为单次请求内缓存 */ }
   return "";
@@ -95,6 +104,12 @@ function psWrite(key, val) {
   try {
     if (typeof $persistentStore !== "undefined" && $persistentStore.write) {
       $persistentStore.write(String(val), key);
+      return;
+    }
+  } catch (e) { /* 换下一种 API */ }
+  try {
+    if (typeof $prefs !== "undefined" && $prefs.setValueForKey) {
+      $prefs.setValueForKey(String(val), key);
     }
   } catch (e) { /* 同上 */ }
 }
@@ -204,7 +219,6 @@ try {
       // 对照装插件前后的抓包：这两个字段在 174 里 8 条中 7 条都有（值 71/70/78…），
       // 与 /open/vip/competitiveness 的 matchScore 完全对应；装插件后彻底消失。
       // 职位详情卡片的「匹配度」读的就是它 —— 缺了就显示 0 分，并连带把「投递人数」打码。
-      // 这里用缓存回来的 matchScore 补上。
       if (/job-detail\/user-rights/.test(url)) {
         const rb = obj.resultbody;
         if (isObj(rb) && rb.jobMatchScore === undefined) {
@@ -213,11 +227,11 @@ try {
             const t = psRead(PS_KEY_MATCH);
             if (t) ms = parseInt(t, 10);
           }
-          if (ms !== null && !isNaN(ms)) {
-            rb.jobMatchScore = ms;
-            rb.jobMatchScoreShow = ms;
-            changed.push("jobMatchScore");
-          }
+          // TODO: 诊断用兜底。确认字段生效后，改成 `if (ms === null) return;` 只用真实值。
+          if (ms === null || isNaN(ms)) ms = FALLBACK_MATCH_SCORE;
+          rb.jobMatchScore = ms;
+          rb.jobMatchScoreShow = ms;
+          changed.push("jobMatchScore");
         }
       }
       if (changed.length) body = JSON.stringify(obj);
