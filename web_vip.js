@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.4
+ * Web VIP 解锁 · Loon http-response 脚本  v1.5
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -79,6 +79,28 @@ function addOneYear(s) {
 let cachedScore = "";
 let cachedMatchScore = null;
 
+// Loon 每次执行脚本都是全新的 JS 上下文，模块变量不跨请求保留，
+// 所以跨请求传值必须落盘到 $persistentStore。
+const PS_KEY_SCORE = "webvip_competitorsSurpass";
+const PS_KEY_MATCH = "webvip_matchScore";
+
+function psRead(key) {
+  try {
+    if (typeof $persistentStore !== "undefined" && $persistentStore.read) {
+      return $persistentStore.read(key) || "";
+    }
+  } catch (e) { /* 环境不支持则退化为单次请求内缓存 */ }
+  return "";
+}
+
+function psWrite(key, val) {
+  try {
+    if (typeof $persistentStore !== "undefined" && $persistentStore.write) {
+      $persistentStore.write(String(val), key);
+    }
+  } catch (e) { /* 同上 */ }
+}
+
 // 等级词表，取自报告页前端代码（CompetitiveReport.js）：
 // jobMatchScore > 85 → 极好；> 70 → 优秀；> 50 → 良好；其余 → 一般
 function scoreLabel(n) {
@@ -126,24 +148,39 @@ function walk(node) {
   }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
-  // 记录真实分数，供后续请求（sesame-competitive）补占位符用
+
+  // 记录真实分数，供后续请求（sesame-competitive 的 competitionInfo）补占位符用
   if (node.competitorsSurpass !== undefined && node.competitorsSurpass !== null) {
     cachedScore = String(node.competitorsSurpass);
+    psWrite(PS_KEY_SCORE, cachedScore);
   }
-  if (typeof node.matchScore === "number") cachedMatchScore = node.matchScore;
+  if (typeof node.matchScore === "number") {
+    cachedMatchScore = node.matchScore;
+    psWrite(PS_KEY_MATCH, cachedMatchScore);
+  }
 
-  // 分数为空 → 用同响应的超越比例，否则用缓存值（必须登记，否则改动会被丢弃）
+  // 分数为空 → 同响应的超越比例 > 本次上下文缓存 > 落盘缓存（必须登记，否则改动会被丢弃）
   if (node.score === "") {
-    const v = node.competitorsSurpass !== undefined ? String(node.competitorsSurpass) : cachedScore;
+    const v = node.competitorsSurpass !== undefined ? String(node.competitorsSurpass)
+            : (cachedScore || psRead(PS_KEY_SCORE));
     if (v) { node.score = v; changed.push("score"); }
   }
   // 表现等级为空 → 按报告页同一套词表补
   if (node.scale === "") {
-    const n = cachedMatchScore !== null ? cachedMatchScore
-            : (typeof node.matchScore === "number" ? node.matchScore
-            : (cachedScore ? parseInt(cachedScore, 10) : null));
+    let n = cachedMatchScore;
+    if (n === null) {
+      const t = psRead(PS_KEY_MATCH);
+      if (t) n = parseInt(t, 10);
+    }
+    if (n === null) {
+      const t = node.score || cachedScore || psRead(PS_KEY_SCORE);
+      if (t) n = parseInt(t, 10);
+    }
     if (n !== null && !isNaN(n)) { node.scale = scoreLabel(n); changed.push("scale"); }
   }
+  // 整个 App 的惯例是 "2" = 免费权益（isFree = ("2" == rightType)）。
+  // bubbleRightType 是唯一还没处理的同型字段，按同一规则改成 "1"。
+  if (node.bubbleRightType === "2") { node.bubbleRightType = "1"; changed.push("bubbleRightType"); }
 }
 
 try {
