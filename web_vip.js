@@ -1,5 +1,5 @@
 /*
- * Web VIP 解锁 · Loon http-response 脚本  v1.3
+ * Web VIP 解锁 · Loon http-response 脚本  v1.4
  *
  * 原理：目标接口服务端不做权益校验 —— 免费账号请求时，服务端照样返回完整数据，
  *      只是前端按布尔字段决定遮不遮。核心判定是 isFree = ("2" == rightType)，
@@ -70,6 +70,24 @@ function addOneYear(s) {
   return (parseInt(m[1], 10) + 1) + m[2] + m[3] + m[2] + m[4] + (m[5] || "");
 }
 
+// 跨请求缓存真实分数。
+// 职位详情页的竞争力卡片文本是模板：「你超过[#vague#]的竞争者，竞争力表现[#vague#]」，
+// 两个占位符分别对应 competitionInfo.score 和 .scale —— 但服务端把这两个都返回空串，
+// 占位符填不上，卡片就成了空白/打码态。
+// 真实分数在同一个页面并发请求的 /open/vip/competitiveness 里（competitorsSurpass / matchScore），
+// 这里缓存下来补进 competitionInfo。
+let cachedScore = "";
+let cachedMatchScore = null;
+
+// 等级词表，取自报告页前端代码（CompetitiveReport.js）：
+// jobMatchScore > 85 → 极好；> 70 → 优秀；> 50 → 良好；其余 → 一般
+function scoreLabel(n) {
+  if (n > 85) return "极好";
+  if (n > 70) return "优秀";
+  if (n > 50) return "良好";
+  return "一般";
+}
+
 // 当前日期 +1 年，格式 YYYY-MM-DD HH:mm:ss
 function nowPlusOneYear() {
   const d = new Date();
@@ -108,10 +126,23 @@ function walk(node) {
   }
   // 列表条数：服务端已给全量，前端只按 viewNum 截断
   if (node.viewNum !== undefined && /interested/i.test(url)) { node.viewNum = 999; changed.push("viewNum"); }
-  // 分数为空时用超越比例补上（必须登记，否则改动会被丢弃）
-  if (node.score === "" && node.competitorsSurpass !== undefined) {
-    node.score = String(node.competitorsSurpass);
-    changed.push("score");
+  // 记录真实分数，供后续请求（sesame-competitive）补占位符用
+  if (node.competitorsSurpass !== undefined && node.competitorsSurpass !== null) {
+    cachedScore = String(node.competitorsSurpass);
+  }
+  if (typeof node.matchScore === "number") cachedMatchScore = node.matchScore;
+
+  // 分数为空 → 用同响应的超越比例，否则用缓存值（必须登记，否则改动会被丢弃）
+  if (node.score === "") {
+    const v = node.competitorsSurpass !== undefined ? String(node.competitorsSurpass) : cachedScore;
+    if (v) { node.score = v; changed.push("score"); }
+  }
+  // 表现等级为空 → 按报告页同一套词表补
+  if (node.scale === "") {
+    const n = cachedMatchScore !== null ? cachedMatchScore
+            : (typeof node.matchScore === "number" ? node.matchScore
+            : (cachedScore ? parseInt(cachedScore, 10) : null));
+    if (n !== null && !isNaN(n)) { node.scale = scoreLabel(n); changed.push("scale"); }
   }
 }
 
@@ -121,6 +152,15 @@ try {
     if (isObj(obj)) {
       walk(obj);
       fixRedirects(obj);
+      // sesame-competitive 的 competitionInfo.status 一直是 "3"。
+      // 报告页前端里 showStatus=3 对应的是"已过期"（isExpire==="1" 时就是 3），
+      // 职位详情页的竞争力卡片疑似沿用同一套语义 → 卡片变成不可用态。
+      // 这里只动 competitionInfo 这一个对象，改成 "1"（可用）。
+      const ci = obj.resultbody && obj.resultbody.competitionInfo;
+      if (isObj(ci) && ci.status === "3") {
+        ci.status = "1";
+        changed.push("competitionInfo.status");
+      }
       if (changed.length) body = JSON.stringify(obj);
     }
   }
