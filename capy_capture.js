@@ -1,42 +1,41 @@
-// CapyPlayer 接口采集脚本（Loon http-response）
-// 作用：把命中域名的请求/响应完整回传到本机 8899，并在 JSON 响应体里插入标记用于验证
-var LOG = 'http://192.168.31.141:8899/log';
+// CapyPlayer 接口采集脚本 v2（Loon http-response）
+// 不再依赖本机 HTTP 服务：报文存进 $persistentStore，用一个特殊 URL 主动取回
+var KEY = 'capy_buf_v1';
 
+function readBuf() {
+  try { var s = $persistentStore.read(KEY); return s ? JSON.parse(s) : []; } catch (e) { return []; }
+}
+function writeBuf(b) {
+  try { $persistentStore.write(JSON.stringify(b), KEY); } catch (e) {}
+}
 function clip(s, n) {
   if (typeof s !== 'string') return '';
-  return s.length > n ? s.slice(0, n) + '...[truncated]' : s;
+  return s.length > n ? s.slice(0, n) + '...[cut]' : s;
 }
 
-var hdrs = ($response && $response.headers) || {};
-var ct = hdrs['Content-Type'] || hdrs['content-type'] || '';
-var body = ($response && $response.body) || '';
+var url = ($request && $request.url) || '';
+var resBody = ($response && $response.body) || '';
 
-// 回传原始报文
-try {
-  $httpClient.post({
-    url: LOG,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url: ($request && $request.url) || '',
-      method: ($request && $request.method) || '',
-      reqHeaders: ($request && $request.headers) || {},
-      reqBody: clip(($request && $request.body) || '', 20000),
-      status: ($response && $response.status) || 0,
-      resHeaders: hdrs,
-      resBody: clip(body, 80000)
-    })
-  }, function () {});
-} catch (e) {}
-
-// 插入可观测标记，便于用 curl 确认脚本确实执行
-if (typeof body === 'string' && body.length) {
-  if (/json/i.test(ct) && body.trim().charAt(0) === '{') {
-    body = body.replace(/^\{/, '{"_capy_script":"ran",');
-  } else if (/json/i.test(ct)) {
-    body = body;
-  } else {
-    body = body + '\n<!--capy-script-ran-->';
-  }
+if (url.indexOf('__capy_dump=1') >= 0) {
+  // 取回已采集的报文
+  var dump = readBuf();
+  $done({ body: JSON.stringify({ count: dump.length, items: dump }) });
+} else if (url.indexOf('__capy_clear=1') >= 0) {
+  writeBuf([]);
+  $done({ body: JSON.stringify({ cleared: true }) });
+} else {
+  var buf = readBuf();
+  buf.push({
+    t: Date.now(),
+    url: url,
+    method: ($request && $request.method) || '',
+    reqHeaders: ($request && $request.headers) || {},
+    reqBody: clip(($request && $request.body) || '', 2000),
+    status: ($response && $response.status) || 0,
+    resHeaders: ($response && $response.headers) || {},
+    resBody: clip(resBody, 6000)
+  });
+  while (buf.length > 25) buf.shift();
+  writeBuf(buf);
+  $done({ body: resBody });
 }
-
-$done({ body: body });
